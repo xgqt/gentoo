@@ -3,7 +3,7 @@
 
 EAPI=7
 
-inherit pax-utils
+inherit desktop pax-utils xdg-utils
 
 DESCRIPTION="General purpose, multi-paradigm Lisp-Scheme programming language"
 HOMEPAGE="https://racket-lang.org/"
@@ -24,19 +24,26 @@ IUSE="doc +chez +futures +jit minimal +places +readline +threads +X"
 REQUIRED_USE="futures? ( jit )"
 
 RDEPEND="
-	dev-db/sqlite:3
-	media-libs/libpng:0
-	x11-libs/cairo[X?]
-	x11-libs/pango[X?]
-	dev-libs/libffi
-	virtual/jpeg:0
-	readline? ( dev-libs/libedit )
-	X? ( x11-libs/gtk+:3[X?] )
 	!dev-tex/slatex
+	dev-db/sqlite:3
+	dev-libs/libffi
+	X? (
+	   dev-util/desktop-file-utils
+	   media-libs/libpng:0
+	   virtual/jpeg:0
+	   x11-libs/cairo[X]
+	   x11-libs/gtk+:3[X]
+	   x11-libs/pango[X]
+	   x11-misc/shared-mime-info
+	)
+	readline? ( dev-libs/libedit )
 "
 DEPEND="${RDEPEND}"
 
 src_prepare() {
+	unset PLTUSERHOME
+	xdg_environment_reset
+
 	default
 	rm -r bc/foreign/libffi || die 'failed to remove bundled libffi'
 }
@@ -46,21 +53,23 @@ src_configure() {
 	# such that we don't preclude cross-compile. Thus don't use
 	# --enable-lt=/usr/bin/libtool
 	# docdir doesn't get passed automatically
-	econf \
-		--enable-shared \
-		--enable-float \
-		--enable-libffi \
-		--enable-foreign \
-		--docdir="/usr/share/doc/${PF}" \
-		$(usex chez "--enable-cs --enable-csonly" "--enable-bc --enable-bconly") \
-		--disable-libs \
-		--disable-strip \
-		$(use_enable X gracket) \
-		$(use_enable doc docs) \
-		$(use_enable jit) \
-		$(use_enable places) \
-		$(use_enable futures) \
+	local myconf=(
+		--enable-shared
+		--enable-float
+		--enable-libffi
+		--enable-foreign
+		--docdir="/usr/share/doc/${PF}"
+		$(usex chez "--enable-cs --enable-csonly" "--enable-bc --enable-bconly")
+		--disable-libs
+		--disable-strip
+		$(use_enable X gracket)
+		$(use_enable doc docs)
+		$(use_enable jit)
+		$(use_enable places)
+		$(use_enable futures)
 		$(use_enable threads pthread)
+	)
+	econf "${myconf[@]}"
 }
 
 src_compile() {
@@ -110,4 +119,26 @@ src_install() {
 	fi
 
 	find "${ED}" \( -name "*.a" -o -name "*.la" \) -delete || die
+
+	# Create missing desktop files
+	if use X; then
+		newicon "${D}/usr/share/racket/drracket-exe-icon.png" "racket.png"
+
+		make_desktop_entry "gracket"   "GRacket"   "racket" "Development;Education;"
+		make_desktop_entry "plt-games" "PLT Games" "racket" "Education;Game;"
+	fi
+}
+
+pkg_postinst() {
+	if use X; then
+		xdg_desktop_database_update
+		xdg_icon_cache_update
+	fi
+}
+
+pkg_postrm() {
+	if use X; then
+		xdg_desktop_database_update
+		xdg_icon_cache_update
+	fi
 }
